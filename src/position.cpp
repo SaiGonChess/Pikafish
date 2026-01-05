@@ -34,6 +34,7 @@
 #include "misc.h"
 #include "movegen.h"
 #include "nnue/nnue_architecture.h"
+#include "pfconfig.h"
 #include "tt.h"
 #include "uci.h"
 
@@ -350,10 +351,18 @@ bool Position::legal(Move m) const {
 
     assert(m.is_ok());
 
+    const auto& config = current_pf_config();
+
     Color    us       = sideToMove;
     Square   from     = m.from_sq();
     Square   to       = m.to_sq();
     Bitboard occupied = (pieces() ^ from) | to;
+
+    if (config.kingTied && type_of(piece_on(from)) == KING)
+        return false;
+
+    if (config.ironSquares & (from | to))
+        return false;
 
     assert(color_of(moved_piece(m)) == us);
     assert(piece_on(king_square(us)) == make_piece(us, KING));
@@ -387,6 +396,13 @@ bool Position::pseudo_legal(const Move m) const {
     Square from = m.from_sq();
     Square to   = m.to_sq();
     Piece  pc   = moved_piece(m);
+
+    const auto& config = current_pf_config();
+    if (config.kingTied && type_of(pc) == KING)
+        return false;
+
+    if (config.ironSquares & (from | to))
+        return false;
 
     // If the 'from' square is not occupied by a piece belonging to the side to
     // move, the move is obviously not legal.
