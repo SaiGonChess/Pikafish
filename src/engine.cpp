@@ -33,6 +33,7 @@
 #include "numa.h"
 #include "perft.h"
 #include "position.h"
+#include "pfconfig.h"
 #include "search.h"
 #include "shm.h"
 #include "types.h"
@@ -131,6 +132,11 @@ void Engine::search_clear() {
 
     tt.clear(threads);
     threads.clear();
+}
+
+void Engine::reload_pf_config() {
+    wait_for_search_finished();
+    set_pf_config(load_pf_config(binaryDirectory));
 }
 
 void Engine::set_on_update_no_moves(std::function<void(const Engine::InfoShort&)>&& f) {
