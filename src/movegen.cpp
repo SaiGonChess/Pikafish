@@ -137,8 +137,6 @@ Move* generate_all(const Position& pos, Move* moveList) {
 
     target &= ~iron;
 
-    target &= ~iron;
-
     moveList = generate_moves<Us, Type>(pos, moveList, target);
 
     if (Type != EVASIONS && !kingTied)

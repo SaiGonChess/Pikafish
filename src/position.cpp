@@ -223,6 +223,13 @@ void Position::set_pf_config(const PFVariantConfig& cfg) {
     }
 }
 
+PFVariantConfig Position::current_pf_config() const {
+    PFVariantConfig cfg{};
+    cfg.ironSquares = pfForbiddenSquares;
+    cfg.kingTied    = pfKingTied;
+    return cfg;
+}
+
 
 // Sets king attacks to detect if a move gives check
 void Position::set_check_info() const {

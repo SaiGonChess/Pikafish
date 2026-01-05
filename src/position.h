@@ -167,6 +167,7 @@ class Position {
     Bitboard pf_forbidden_squares() const;
     bool     pf_king_tied() const;
     void     set_pf_config(const PFVariantConfig& cfg);
+    PFVariantConfig current_pf_config() const;
 
     // Position consistency check, for debugging
     bool pos_is_ok() const;
