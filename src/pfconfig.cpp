@@ -26,13 +26,9 @@
 #include <utility>
 #include <vector>
 
-#include "misc.h"
-
 namespace Stockfish {
 
 namespace {
-
-PFVariantConfig CurrentPFConfig{};
 
 constexpr int IronMaskRanks = 10;
 constexpr int IronMaskFiles = 9;
@@ -42,14 +38,8 @@ std::vector<std::filesystem::path> config_roots(const std::string& rootDirectory
 
     if (!rootDirectory.empty())
         roots.emplace_back(rootDirectory);
-
-    auto workingDirectory = CommandLine::get_working_directory();
-    if (!workingDirectory.empty())
-    {
-        std::filesystem::path workingPath(workingDirectory);
-        if (roots.empty() || workingPath != roots.front())
-            roots.emplace_back(std::move(workingPath));
-    }
+    else
+        roots.emplace_back(std::filesystem::current_path());
 
     return roots;
 }
@@ -129,14 +119,6 @@ PFVariantConfig load_pf_config(const std::string& rootDirectory) {
     config.sourceSummary += tieZiSummary;
 
     return config;
-}
-
-void set_pf_config(const PFVariantConfig& config) {
-    CurrentPFConfig = config;
-}
-
-const PFVariantConfig& current_pf_config() {
-    return CurrentPFConfig;
 }
 
 }  // namespace Stockfish

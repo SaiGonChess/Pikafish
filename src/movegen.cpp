@@ -80,10 +80,9 @@ Move* generate_moves(const Position& pos, Move* moveList, Bitboard target) {
 
     static_assert(Pt != KING, "Unsupported piece type in generate_moves()");
 
-    const auto& config    = current_pf_config();
-    Bitboard    ironMask  = config.ironSquares;
-    Bitboard    bb        = pos.pieces(Us, Pt) & ~ironMask;
-    Bitboard    destMask  = target & ~ironMask;
+    Bitboard ironMask = pos.pf_forbidden_squares();
+    Bitboard bb       = pos.pieces(Us, Pt) & ~ironMask;
+    Bitboard destMask = target & ~ironMask;
 
     while (bb)
     {
@@ -129,18 +128,20 @@ Move* generate_moves(const Position& pos, Move* moveList, Bitboard target) {
 template<Color Us, GenType Type>
 Move* generate_all(const Position& pos, Move* moveList) {
 
-    const auto& config = current_pf_config();
-    Bitboard    iron   = config.ironSquares;
+    Bitboard    iron   = pos.pf_forbidden_squares();
     const Square ksq   = pos.king_square(Us);
-    Bitboard     target = Type == PSEUDO_LEGAL ? ~pos.pieces(Us)
-                        : Type == CAPTURES     ? pos.pieces(~Us)
-                                               : ~pos.pieces();  // QUIETS
+    bool         kingTied = pos.pf_king_tied();
+    Bitboard     target   = Type == PSEUDO_LEGAL ? ~pos.pieces(Us)
+                         : Type == CAPTURES     ? pos.pieces(~Us)
+                                                : ~pos.pieces();  // QUIETS
+
+    target &= ~iron;
 
     target &= ~iron;
 
     moveList = generate_moves<Us, Type>(pos, moveList, target);
 
-    if (Type != EVASIONS && !config.kingTied)
+    if (Type != EVASIONS && !kingTied)
     {
         Bitboard b = attacks_bb<KING>(ksq) & target;
 
@@ -181,8 +182,8 @@ Move* generate<EVASIONS>(const Position& pos, Move* moveList) {
 
     assert(bool(pos.checkers()));
 
-    const auto& config = current_pf_config();
-    Bitboard    iron   = config.ironSquares;
+    Bitboard iron = pos.pf_forbidden_squares();
+    bool     kingTied = pos.pf_king_tied();
 
     // If there are more than one checker, use slow version
     if (more_than_one(pos.checkers()))
@@ -198,7 +199,7 @@ Move* generate<EVASIONS>(const Position& pos, Move* moveList) {
     moveList        = us == WHITE ? generate_moves<WHITE, EVASIONS>(pos, moveList, target)
                                   : generate_moves<BLACK, EVASIONS>(pos, moveList, target);
 
-    if (!config.kingTied)
+    if (!kingTied)
     {
         // Generate evasions for king, capture and non capture moves
         Bitboard b = attacks_bb<KING>(ksq) & ~pos.pieces(us) & ~iron;

@@ -32,8 +32,6 @@ struct PFVariantConfig {
 };
 
 PFVariantConfig load_pf_config(const std::string& rootDirectory);
-void            set_pf_config(const PFVariantConfig& config);
-const PFVariantConfig& current_pf_config();
 
 }  // namespace Stockfish
 
