@@ -133,9 +133,15 @@ void UCIEngine::loop() {
         else if (token == "fen" || token == "startpos")
             is.seekg(0), position(is);
         else if (token == "ucinewgame")
+        {
             engine.search_clear();
+            engine.reload_pf_config();
+        }
         else if (token == "isready")
+        {
+            engine.reload_pf_config();
             sync_cout << "readyok" << sync_endl;
+        }
 
         // Add custom non-UCI commands, mainly for debugging purposes.
         // These commands must not be used during a search!

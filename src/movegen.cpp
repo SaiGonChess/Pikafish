@@ -79,7 +79,9 @@ Move* generate_moves(const Position& pos, Move* moveList, Bitboard target) {
 
     static_assert(Pt != KING, "Unsupported piece type in generate_moves()");
 
-    Bitboard bb = pos.pieces(Us, Pt);
+    Bitboard ironMask = pos.pf_forbidden_squares();
+    Bitboard bb       = pos.pieces(Us, Pt) & ~ironMask;
+    Bitboard destMask = target & ~ironMask;
 
     while (bb)
     {
@@ -87,7 +89,7 @@ Move* generate_moves(const Position& pos, Move* moveList, Bitboard target) {
         Bitboard b    = 0;
         if constexpr (Pt != CANNON)
             b = (Pt != PAWN ? attacks_bb<Pt>(from, pos.pieces()) : attacks_bb<PAWN>(from, Us))
-              & target;
+              & destMask;
         else
         {
             // Generate cannon capture moves.
@@ -100,8 +102,10 @@ Move* generate_moves(const Position& pos, Move* moveList, Bitboard target) {
 
             // Restrict to target if in evasion generation
             if (Type == EVASIONS)
-                b &= target;
+                b &= destMask;
         }
+
+        b &= destMask;
 
         moveList = splat_moves(moveList, from, b);
     }
@@ -123,14 +127,18 @@ Move* generate_moves(const Position& pos, Move* moveList, Bitboard target) {
 template<Color Us, GenType Type>
 Move* generate_all(const Position& pos, Move* moveList) {
 
-    const Square ksq    = pos.king_square(Us);
-    Bitboard     target = Type == PSEUDO_LEGAL ? ~pos.pieces(Us)
-                        : Type == CAPTURES     ? pos.pieces(~Us)
-                                               : ~pos.pieces();  // QUIETS
+    Bitboard    iron   = pos.pf_forbidden_squares();
+    const Square ksq   = pos.king_square(Us);
+    bool         kingTied = pos.pf_king_tied();
+    Bitboard     target   = Type == PSEUDO_LEGAL ? ~pos.pieces(Us)
+                         : Type == CAPTURES     ? pos.pieces(~Us)
+                                                : ~pos.pieces();  // QUIETS
+
+    target &= ~iron;
 
     moveList = generate_moves<Us, Type>(pos, moveList, target);
 
-    if (Type != EVASIONS)
+    if (Type != EVASIONS && !kingTied)
     {
         Bitboard b = attacks_bb<KING>(ksq) & target;
 
@@ -171,6 +179,9 @@ Move* generate<EVASIONS>(const Position& pos, Move* moveList) {
 
     assert(bool(pos.checkers()));
 
+    Bitboard iron = pos.pf_forbidden_squares();
+    bool     kingTied = pos.pf_king_tied();
+
     // If there are more than one checker, use slow version
     if (more_than_one(pos.checkers()))
         return generate<PSEUDO_LEGAL>(pos, moveList);
@@ -181,25 +192,29 @@ Move* generate<EVASIONS>(const Position& pos, Move* moveList) {
     PieceType pt      = type_of(pos.piece_on(checksq));
 
     // Generate blocking evasions or captures of the checking piece
-    Bitboard target = (between_bb(ksq, checksq)) & ~pos.pieces(us);
+    Bitboard target = (between_bb(ksq, checksq)) & ~pos.pieces(us) & ~iron;
     moveList        = us == WHITE ? generate_moves<WHITE, EVASIONS>(pos, moveList, target)
                                   : generate_moves<BLACK, EVASIONS>(pos, moveList, target);
 
-    // Generate evasions for king, capture and non capture moves
-    Bitboard b = attacks_bb<KING>(ksq) & ~pos.pieces(us);
-    // For all the squares attacked by slider checkers. We will remove them from
-    // the king evasions in order to skip known illegal moves, which avoids any
-    // useless legality checks later on.
-    if (pt == ROOK || pt == CANNON)
-        b &= ~line_bb(checksq, ksq) | pos.pieces(~us);
-    moveList = splat_moves(moveList, ksq, b);
+    if (!kingTied)
+    {
+        // Generate evasions for king, capture and non capture moves
+        Bitboard b = attacks_bb<KING>(ksq) & ~pos.pieces(us) & ~iron;
+        // For all the squares attacked by slider checkers. We will remove them from
+        // the king evasions in order to skip known illegal moves, which avoids any
+        // useless legality checks later on.
+        if (pt == ROOK || pt == CANNON)
+            b &= ~line_bb(checksq, ksq) | pos.pieces(~us);
+        moveList = splat_moves(moveList, ksq, b);
+    }
 
     // Generate move away hurdle piece evasions for cannon
     if (pt == CANNON)
     {
-        Bitboard hurdle = between_bb(ksq, checksq) & pos.pieces(us);
+        Bitboard hurdle = between_bb(ksq, checksq) & pos.pieces(us) & ~iron;
         if (hurdle)
         {
+            Bitboard b      = 0;
             Square hurdleSq = pop_lsb(hurdle);
             pt              = type_of(pos.piece_on(hurdleSq));
             if (pt == PAWN)
@@ -211,6 +226,7 @@ Move* generate<EVASIONS>(const Position& pos, Move* moveList) {
             else
                 b = attacks_bb(pt, hurdleSq, pos.pieces()) & ~line_bb(checksq, hurdleSq)
                   & ~pos.pieces(us);
+            b &= ~iron;
             moveList = splat_moves(moveList, hurdleSq, b);
         }
     }

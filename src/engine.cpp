@@ -33,6 +33,7 @@
 #include "numa.h"
 #include "perft.h"
 #include "position.h"
+#include "pfconfig.h"
 #include "search.h"
 #include "shm.h"
 #include "types.h"
@@ -110,6 +111,7 @@ Engine::Engine(std::optional<std::string> path) :
 
     load_networks();
     resize_threads();
+    reload_pf_config();
 }
 
 std::uint64_t Engine::perft(const std::string& fen, Depth depth) {
@@ -131,6 +133,12 @@ void Engine::search_clear() {
 
     tt.clear(threads);
     threads.clear();
+}
+
+void Engine::reload_pf_config() {
+    wait_for_search_finished();
+    auto cfg = load_pf_config(CommandLine::get_working_directory());
+    pos.set_pf_config(cfg);
 }
 
 void Engine::set_on_update_no_moves(std::function<void(const Engine::InfoShort&)>&& f) {
