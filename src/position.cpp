@@ -399,6 +399,8 @@ bool Position::legal(Move m) const {
 
     assert(m.is_ok());
 
+    const auto& config = current_pf_config();
+
     Color    us       = sideToMove;
     Square   from     = m.from_sq();
     Square   to       = m.to_sq();

@@ -22,6 +22,7 @@
 
 #include "bitboard.h"
 #include "position.h"
+#include "pfconfig.h"
 
 #if defined(USE_AVX512ICL)
     #include <array>
@@ -133,6 +134,8 @@ Move* generate_all(const Position& pos, Move* moveList) {
     Bitboard     target   = Type == PSEUDO_LEGAL ? ~pos.pieces(Us)
                          : Type == CAPTURES     ? pos.pieces(~Us)
                                                 : ~pos.pieces();  // QUIETS
+
+    target &= ~iron;
 
     target &= ~iron;
 
