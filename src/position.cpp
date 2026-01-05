@@ -34,6 +34,7 @@
 #include "misc.h"
 #include "movegen.h"
 #include "nnue/nnue_architecture.h"
+#include "pfconfig.h"
 #include "tt.h"
 #include "uci.h"
 
@@ -45,6 +46,8 @@ namespace Zobrist {
 
 Key psq[PIECE_NB][SQUARE_NB];
 Key side, noPawns;
+Key pfForbidden[SQUARE_NB];
+Key pfKingTied;
 }
 
 namespace {
@@ -53,6 +56,16 @@ constexpr std::string_view PieceToChar(" RACPNBK racpnbk");
 
 static constexpr Piece Pieces[] = {W_ROOK, W_ADVISOR, W_CANNON, W_PAWN, W_KNIGHT, W_BISHOP, W_KING,
                                    B_ROOK, B_ADVISOR, B_CANNON, B_PAWN, B_KNIGHT, B_BISHOP, B_KING};
+
+Key compute_pf_variant_key(Bitboard forbidden, bool kingTied) {
+    Key key = kingTied ? Zobrist::pfKingTied : Key(0);
+
+    Bitboard mask = forbidden;
+    while (mask)
+        key ^= Zobrist::pfForbidden[pop_lsb(mask)];
+
+    return key;
+}
 }  // namespace
 
 // Returns an ASCII representation of the position
@@ -90,6 +103,9 @@ void Position::init() {
 
     Zobrist::side    = rng.rand<Key>();
     Zobrist::noPawns = rng.rand<Key>();
+    for (Square s = SQ_A0; s <= SQ_I9; ++s)
+        Zobrist::pfForbidden[s] = rng.rand<Key>();
+    Zobrist::pfKingTied = rng.rand<Key>();
 }
 
 
@@ -126,12 +142,18 @@ Position& Position::set(const string& fenStr, StateInfo* si) {
     Square             sq = SQ_A9;
     std::istringstream ss(fenStr);
 
+    Bitboard savedForbidden = pfForbiddenSquares;
+    bool     savedKingTied  = pfKingTied;
+
     std::memset(reinterpret_cast<char*>(this), 0, sizeof(Position));
 
     midEncoding[WHITE] = midEncoding[BLACK] = Eval::NNUE::Features::HalfKAv2_hm::BalanceEncoding;
 
     std::memset(si, 0, sizeof(StateInfo));
     st = si;
+    pfForbiddenSquares = savedForbidden;
+    pfKingTied         = savedKingTied;
+    pfVariantKey       = compute_pf_variant_key(pfForbiddenSquares, pfKingTied);
 
     ss >> std::noskipws;
 
@@ -178,6 +200,29 @@ Position& Position::set(const string& fenStr, StateInfo* si) {
     return *this;
 }
 
+void Position::set_pf_config(const PFVariantConfig& cfg) {
+    Bitboard newForbidden = cfg.ironSquares;
+    bool     newKingTied   = cfg.kingTied;
+    Key      newVariant    = compute_pf_variant_key(newForbidden, newKingTied);
+
+    Key oldVariant = pfVariantKey;
+
+    pfForbiddenSquares = newForbidden;
+    pfKingTied         = newKingTied;
+    pfVariantKey       = newVariant;
+
+    if (st)
+    {
+        for (StateInfo* node = st; node; node = node->previous)
+        {
+            node->forbiddenSquares = pfForbiddenSquares;
+            node->pfKingTied       = pfKingTied;
+            node->key ^= oldVariant ^ newVariant;
+        }
+        std::memset(&filter, 0, sizeof(BloomFilter));
+    }
+}
+
 
 // Sets king attacks to detect if a move gives check
 void Position::set_check_info() const {
@@ -221,6 +266,8 @@ void Position::set_state() const {
     st->majorMaterial[WHITE] = st->majorMaterial[BLACK] = VALUE_ZERO;
     st->checkersBB = checkers_to(~sideToMove, king_square(sideToMove));
     st->move       = Move::none();
+    st->forbiddenSquares = pfForbiddenSquares;
+    st->pfKingTied       = pfKingTied;
 
     set_check_info();
 
@@ -246,6 +293,8 @@ void Position::set_state() const {
             }
         }
     }
+
+    st->key ^= pfVariantKey;
 
     if (sideToMove == BLACK)
         st->key ^= Zobrist::side;
@@ -355,6 +404,12 @@ bool Position::legal(Move m) const {
     Square   to       = m.to_sq();
     Bitboard occupied = (pieces() ^ from) | to;
 
+    if (pf_king_tied() && type_of(piece_on(from)) == KING)
+        return false;
+
+    if (pf_forbidden_squares() & (from | to))
+        return false;
+
     assert(color_of(moved_piece(m)) == us);
     assert(piece_on(king_square(us)) == make_piece(us, KING));
 
@@ -387,6 +442,12 @@ bool Position::pseudo_legal(const Move m) const {
     Square from = m.from_sq();
     Square to   = m.to_sq();
     Piece  pc   = moved_piece(m);
+
+    if (pf_king_tied() && type_of(pc) == KING)
+        return false;
+
+    if (pf_forbidden_squares() & (from | to))
+        return false;
 
     // If the 'from' square is not occupied by a piece belonging to the side to
     // move, the move is obviously not legal.
