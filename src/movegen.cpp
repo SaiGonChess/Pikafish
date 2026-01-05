@@ -22,6 +22,7 @@
 
 #include "bitboard.h"
 #include "position.h"
+#include "pfconfig.h"
 
 #if defined(USE_AVX512ICL)
     #include <array>
