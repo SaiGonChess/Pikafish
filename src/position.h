@@ -30,6 +30,7 @@
 #include <utility>
 
 #include "bitboard.h"
+#include "pfconfig.h"
 #include "nnue/features/half_ka_v2_hm.h"
 #include "types.h"
 
@@ -52,6 +53,8 @@ struct StateInfo {
     int16_t check10[COLOR_NB];
     int     rule60;
     int     pliesFromNull;
+    Bitboard forbiddenSquares;
+    bool     pfKingTied;
 
     // Not copied when making a move (will be recomputed anyhow)
     Key        key;
@@ -161,6 +164,10 @@ class Position {
     uint16_t chased(Color c);
     Value    major_material(Color c) const;
     Value    major_material() const;
+    Bitboard pf_forbidden_squares() const;
+    bool     pf_king_tied() const;
+    void     set_pf_config(const PFVariantConfig& cfg);
+    PFVariantConfig current_pf_config() const;
 
     // Position consistency check, for debugging
     bool pos_is_ok() const;
@@ -198,6 +205,9 @@ class Position {
     StateInfo* st;
     int        gamePly;
     Color      sideToMove;
+    Bitboard   pfForbiddenSquares = 0;
+    bool       pfKingTied         = false;
+    Key        pfVariantKey       = 0;
 
     // Bloom filter for fast repetition filtering
     BloomFilter filter;
@@ -302,6 +312,12 @@ inline int Position::game_ply() const { return gamePly; }
 
 inline int Position::rule60_count() const { return st->rule60; }
 
+inline Bitboard Position::pf_forbidden_squares() const {
+    return st ? st->forbiddenSquares : pfForbiddenSquares;
+}
+
+inline bool Position::pf_king_tied() const { return st ? st->pfKingTied : pfKingTied; }
+
 inline bool Position::capture(Move m) const {
     assert(m.is_ok());
     return !empty(m.to_sq());
@@ -385,6 +401,11 @@ inline StateInfo* Position::state() const { return st; }
 
 inline Position& Position::set(const Position& pos, StateInfo* si) {
 
+    PFVariantConfig cfg{};
+    cfg.ironSquares = pos.pf_forbidden_squares();
+    cfg.kingTied    = pos.pf_king_tied();
+
+    set_pf_config(cfg);
     set(pos.fen(), si);
 
     // Special cares for bloom filter
